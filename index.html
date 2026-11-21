@@ -317,4 +317,402 @@ function openPurchaseModal() {
     <label>${lang==='en'?'Quantity':'प्रमाण'}</label><input id="p-qty" type="number" value="1" min="1">
     <label>${lang==='en'?'Cost per tyre (₹)':'प्रति टायर खरेदी किंमत (₹)'}</label><input id="p-cost" type="number" placeholder="0">
     <label>${lang==='en'?'Notes':'टिप्पणी'}</label><input id="p-notes" placeholder="Bill no / remark">
-    <button class="btn btn-primary btn-block" onclick="savePurchase()
+    <button class="btn btn-primary btn-block" onclick="savePurchase()">${lang==='en'?'Record Purchase':'खरेदी नोंदवा'}</button>
+  `);
+}
+function savePurchase() {
+  const tyreId = document.getElementById('p-tyre').value;
+  const tyre = DB.tyres.find(t => t.id === tyreId);
+  const qty = parseInt(document.getElementById('p-qty').value) || 1;
+  const cost = parseFloat(document.getElementById('p-cost').value) || tyre.costPrice;
+  const seller = document.getElementById('p-seller').value.trim();
+  const sphone = document.getElementById('p-sphone').value.trim();
+  const notes = document.getElementById('p-notes').value.trim();
+  if (!seller) return alert(lang==='en'?'Seller name required':'विक्रेत्याचे नाव आवश्यक');
+  tyre.qty += qty;
+  if (cost) tyre.costPrice = cost;
+  DB.purchases.push({
+    id: Date.now().toString(), seller, sellerPhone: sphone, notes,
+    tyreId, tyreBrand: tyre.brand, tyreSize: tyre.size, tyreType: tyre.type,
+    qty, cost, date: new Date().toISOString(), total: qty * cost
+  });
+  DB.save(); closeModal(); renderAll();
+}
+
+function deleteTyre(id) {
+  if (!confirm(lang==='en'?'Delete this tyre?':'हा टायर हटवायचा?')) return;
+  DB.tyres = DB.tyres.filter(t => t.id !== id); DB.save(); renderAll();
+}
+
+// ============================================================
+// RETURN SALE
+// ============================================================
+function openReturnModal(saleId) {
+  const sale = DB.sales.find(s => s.id === saleId);
+  if (!sale) return;
+  openModal(`
+    <h2>${lang==='en'?'Return / Cancel Sale':'विक्री परत / रद्द'}</h2>
+    <div class="card" style="margin-bottom:14px;">
+      <div style="font-size:12px;color:var(--muted);">${sale.invoice}</div>
+      <div style="font-weight:600;margin-top:4px;">${sale.customer}</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:4px;">${sale.tyreBrand} ${sale.tyreSize} × ${sale.qty} — ₹${sale.total.toLocaleString('en-IN')}</div>
+    </div>
+    <label>${lang==='en'?'Return Reason / Note (required)':'परतीचे कारण / टिप्पणी (आवश्यक)'}</label>
+    <textarea id="r-note" placeholder="${lang==='en'?'e.g. Customer returned — wrong size':'उदा. ग्राहकाने परत केले — चुकीचा साइज'}"></textarea>
+    <label>${lang==='en'?'Return Date':'परतीची तारीख'}</label>
+    <input id="r-date" type="date" value="${new Date().toISOString().split('T')[0]}">
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+      ${lang==='en'?'Stock will be added back. Sale will be marked RETURNED.':'साठा पुन्हा जोडला जाईल. विक्री RETURNED म्हणून चिन्हांकित होईल.'}
+    </p>
+    <button class="btn btn-orange btn-block" onclick="confirmReturn('${saleId}')">
+      ${lang==='en'?'Confirm Return':'परत निश्चित करा'}
+    </button>
+  `);
+}
+function confirmReturn(saleId) {
+  const note = document.getElementById('r-note').value.trim();
+  const rdate = document.getElementById('r-date').value;
+  if (!note) return alert(lang==='en'?'Please write a return reason':'कृपया परतीचे कारण लिहा');
+  const sale = DB.sales.find(s => s.id === saleId);
+  if (!sale) return;
+  const t = DB.tyres.find(x => x.id === sale.tyreId);
+  if (t) t.qty += sale.qty;
+  sale.returned = true;
+  sale.returnNote = note;
+  sale.returnDate = rdate || new Date().toISOString();
+  DB.save(); closeModal(); renderAll();
+  alert(lang==='en'?'Return recorded. Stock restored.':'परत नोंदवली. साठा पुन्हा जोडला.');
+}
+function reopenSale(saleId) {
+  if (!confirm(lang==='en'?'Undo return? Stock will be deducted again.':'परत रद्द करायची? साठा पुन्हा कमी होईल.')) return;
+  const sale = DB.sales.find(s => s.id === saleId);
+  if (!sale || !sale.returned) return;
+  const t = DB.tyres.find(x => x.id === sale.tyreId);
+  if (!t || t.qty < sale.qty) return alert(lang==='en'?'Not enough stock to reopen':'पुन्हा उघडण्यासाठी पुरेसा साठा नाही');
+  t.qty -= sale.qty;
+  sale.returned = false; sale.returnNote = ''; sale.returnDate = '';
+  DB.save(); renderAll();
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function renderAll() { renderDashboard(); renderStock(); renderSales(); renderReports(); }
+
+function renderDashboard() {
+  const totalQty = DB.tyres.reduce((s, t) => s + t.qty, 0);
+  const stockVal = DB.tyres.reduce((s, t) => s + t.qty * t.costPrice, 0);
+  const now = new Date(), m = now.getMonth(), y = now.getFullYear();
+  const active = DB.sales.filter(s => !s.returned);
+  const monthSales = active.filter(s => { const d = new Date(s.date); return d.getMonth()===m && d.getFullYear()===y; });
+  const salesTotal = monthSales.reduce((s, x) => s + x.total, 0);
+  const profitTotal = monthSales.reduce((s, x) => s + (x.price - x.cost) * x.qty, 0);
+  const lastM = m === 0 ? 11 : m - 1, lastY = m === 0 ? y - 1 : y;
+  const lastSales = active.filter(s => { const d = new Date(s.date); return d.getMonth()===lastM && d.getFullYear()===lastY; }).reduce((s, x) => s + x.total, 0);
+  const growth = lastSales > 0 ? ((salesTotal - lastSales) / lastSales * 100) : (salesTotal > 0 ? 100 : 0);
+  document.getElementById('stat-stock').textContent = totalQty;
+  document.getElementById('stat-stockval').textContent = '₹' + stockVal.toLocaleString('en-IN');
+  document.getElementById('stat-sales').textContent = '₹' + salesTotal.toLocaleString('en-IN');
+  document.getElementById('stat-profit').textContent = '₹' + Math.round(profitTotal).toLocaleString('en-IN');
+  const gEl = document.getElementById('stat-growth');
+  gEl.textContent = (growth >= 0 ? '+' : '') + growth.toFixed(1) + '%';
+  gEl.style.color = growth >= 0 ? 'var(--green)' : 'var(--accent)';
+  document.getElementById('growth-fill').style.width = Math.min(Math.abs(growth), 100) + '%';
+  document.getElementById('growth-fill').style.background = growth >= 0 ? 'var(--green)' : 'var(--accent)';
+}
+
+function renderStock() {
+  const q = (document.getElementById('search-box')?.value || '').toLowerCase();
+  const list = DB.tyres.filter(t => (t.brand + ' ' + t.size).toLowerCase().includes(q));
+  const el = document.getElementById('stock-list');
+  if (!list.length) { el.innerHTML = `<div class="empty">${lang==='en'?'No tyres yet. Tap + to add.':'अजून टायर नाहीत. + दाबा.'}</div>`; return; }
+  el.innerHTML = list.map(t => `
+    <div class="tyre-item">
+      <div class="tyre-info">
+        <div class="name">${t.brand} ${t.size}
+          <span class="tyre-tag ${t.type==='new'?'tag-new':'tag-used'}">${t.type==='new'?(lang==='en'?'NEW':'नवीन'):(lang==='en'?'USED':'वापरलेले')}</span>
+        </div>
+        <div class="meta">₹${t.costPrice} → ₹${t.sellPrice} ${t.condition?'• '+t.condition:''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="qty ${t.qty<2?'low':''}">${t.qty}</span>
+        <button class="delete-btn" onclick="deleteTyre('${t.id}')">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderSales() {
+  const q = (document.getElementById('sales-search')?.value || '').toLowerCase();
+  const list = [...DB.sales].reverse().filter(s =>
+    (s.customer + ' ' + s.invoice + ' ' + s.tyreBrand + ' ' + s.tyreSize).toLowerCase().includes(q)
+  );
+  const el = document.getElementById('sales-list');
+  if (!list.length) { el.innerHTML = `<div class="empty">${lang==='en'?'No sales yet.':'अजून विक्री नाही.'}</div>`; return; }
+  el.innerHTML = list.map(s => `
+    <div class="sale-item ${s.returned ? 'returned' : ''}">
+      <div class="top">
+        <div>
+          <div class="inv">${s.invoice || '-'} ${s.returned ? `<span class="tyre-tag tag-return">${lang==='en'?'RETURNED':'परत'}</span>` : ''}</div>
+          <div class="cust">👤 ${s.customer || '-'}</div>
+          <div class="date">${new Date(s.date).toLocaleDateString('en-IN')} ${s.phone?'• '+s.phone:''}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="amt">₹${s.total.toLocaleString('en-IN')}</div>
+          <div class="date">${s.qty} × ₹${s.price}</div>
+        </div>
+      </div>
+      <div class="details">🛞 ${s.tyreBrand} ${s.tyreSize} (${s.tyreType}) ${s.notes?'• '+s.notes:''}</div>
+      ${s.returned ? `<div class="return-note">↩️ ${lang==='en'?'Returned':'परत'} ${s.returnDate?new Date(s.returnDate).toLocaleDateString('en-IN'):''}: ${s.returnNote || '-'}</div>` : ''}
+      <div class="action-row">
+        <button class="btn btn-ghost" onclick='generateInvoicePDF(${JSON.stringify(s).replace(/'/g,"&#39;")})'>📄 ${lang==='en'?'Invoice':'बीजक'}</button>
+        ${s.returned
+          ? `<button class="btn btn-ghost" onclick="reopenSale('${s.id}')">↩️ ${lang==='en'?'Undo Return':'परत रद्द'}</button>`
+          : `<button class="btn btn-orange" onclick="openReturnModal('${s.id}')">↩️ ${lang==='en'?'Return':'परत'}</button>`
+        }
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderReports() {
+  const el = document.getElementById('report-list');
+  const months = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ y: d.getFullYear(), m: d.getMonth(), label: d.toLocaleString('en', { month: 'short', year: '2-digit' }) });
+  }
+  const active = DB.sales.filter(s => !s.returned);
+  if (!active.length) { el.innerHTML = `<div class="empty">${lang==='en'?'No sales yet.':'अजून विक्री नाही.'}</div>`; return; }
+  el.innerHTML = months.map(mo => {
+    const s = active.filter(x => { const d = new Date(x.date); return d.getMonth()===mo.m && d.getFullYear()===mo.y; });
+    const rev = s.reduce((a, x) => a + x.total, 0);
+    const prof = s.reduce((a, x) => a + (x.price - x.cost) * x.qty, 0);
+    const qty = s.reduce((a, x) => a + x.qty, 0);
+    return `<div class="report-row">
+      <span>${mo.label}</span>
+      <span style="text-align:right;">
+        <span style="color:var(--green);font-weight:600;">₹${rev.toLocaleString('en-IN')}</span>
+        <span style="color:var(--muted);font-size:12px;display:block;">${qty} ${lang==='en'?'tyres':'टायर'} • ₹${Math.round(prof).toLocaleString('en-IN')} ${lang==='en'?'profit':'नफा'}</span>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// PDF & EXCEL
+// ============================================================
+function generateInvoicePDF(sale) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const biz = DB.biz;
+  doc.setFillColor(26, 26, 46); doc.rect(0, 0, 210, 40, 'F');
+  doc.setTextColor(255); doc.setFontSize(20); doc.setFont(undefined, 'bold');
+  doc.text(biz.name || 'RS TYRES', 14, 18);
+  doc.setFontSize(9); doc.setFont(undefined, 'normal');
+  if (biz.addr) doc.text(biz.addr, 14, 26);
+  doc.setFontSize(14); doc.setFont(undefined, 'bold');
+  doc.text(sale.returned ? 'INVOICE (RETURNED)' : 'INVOICE', 195, 18, { align: 'right' });
+  doc.setFontSize(9); doc.setFont(undefined, 'normal');
+  doc.text(sale.invoice || '-', 195, 26, { align: 'right' });
+  doc.setTextColor(0);
+  doc.setFontSize(10); doc.setFont(undefined, 'bold');
+  doc.text('Bill To:', 14, 52); doc.setFont(undefined, 'normal');
+  doc.text(sale.customer || '-', 14, 58);
+  if (sale.phone) doc.text(sale.phone, 14, 64);
+  doc.text('Date: ' + new Date(sale.date).toLocaleDateString('en-IN'), 195, 52, { align: 'right' });
+  doc.autoTable({
+    startY: 72,
+    head: [['#', 'Tyre', 'Type', 'Qty', 'Rate (₹)', 'Amount (₹)']],
+    body: [[1, `${sale.tyreBrand} ${sale.tyreSize}`, (sale.tyreType||'').toUpperCase(), sale.qty, sale.price, sale.total]],
+    theme: 'grid',
+    headStyles: { fillColor: [233, 69, 96], textColor: 255 },
+    styles: { fontSize: 10 }
+  });
+  const endY = doc.lastAutoTable.finalY + 8;
+  doc.setFontSize(12); doc.setFont(undefined, 'bold');
+  doc.text('Total: ₹' + sale.total.toLocaleString('en-IN'), 195, endY, { align: 'right' });
+  if (sale.notes) { doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.text('Notes: ' + sale.notes, 14, endY + 10); }
+  if (sale.returned) {
+    doc.setTextColor(243, 156, 18); doc.setFontSize(10); doc.setFont(undefined, 'bold');
+    doc.text('RETURNED on ' + new Date(sale.returnDate).toLocaleDateString('en-IN'), 14, endY + 22);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(9);
+    doc.text('Reason: ' + (sale.returnNote || '-'), 14, endY + 28);
+  }
+  doc.setFontSize(8); doc.setTextColor(120);
+  doc.text('Thank you for your business!', 105, 285, { align: 'center' });
+  doc.save(`${sale.invoice || 'invoice'}${sale.returned ? '-RETURNED' : ''}.pdf`);
+}
+
+function exportSalesPDF() {
+  if (!DB.sales.length) return alert('No sales to export');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('l');
+  doc.setFontSize(16); doc.setFont(undefined, 'bold');
+  doc.text((DB.biz.name || 'RS TYRES') + ' — Sales Report', 14, 16);
+  doc.setFontSize(9); doc.setFont(undefined, 'normal');
+  doc.text('Generated: ' + new Date().toLocaleString('en-IN'), 14, 22);
+  const rows = [...DB.sales].reverse().map(s => [
+    s.invoice || '-', new Date(s.date).toLocaleDateString('en-IN'),
+    s.customer || '-', s.phone || '-', `${s.tyreBrand} ${s.tyreSize}`, s.tyreType,
+    s.qty, s.price, s.total, s.returned ? 'RETURNED' : 'OK', s.returnNote || ''
+  ]);
+  doc.autoTable({
+    startY: 28,
+    head: [['Invoice','Date','Customer','Phone','Tyre','Type','Qty','Rate','Total','Status','Return Note']],
+    body: rows, theme: 'grid',
+    headStyles: { fillColor: [233, 69, 96], textColor: 255 },
+    styles: { fontSize: 7 }
+  });
+  const active = DB.sales.filter(s => !s.returned);
+  const total = active.reduce((a, x) => a + x.total, 0);
+  doc.setFontSize(11); doc.setFont(undefined, 'bold');
+  doc.text('Active Sales Total: ₹' + total.toLocaleString('en-IN'), 14, doc.lastAutoTable.finalY + 10);
+  doc.save(`sales-report-${Date.now()}.pdf`);
+}
+
+function exportMonthlyPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16); doc.setFont(undefined, 'bold');
+  doc.text((DB.biz.name || 'RS TYRES') + ' — Monthly Report', 14, 16);
+  const now = new Date();
+  const active = DB.sales.filter(s => !s.returned);
+  const rows = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const s = active.filter(x => { const dd = new Date(x.date); return dd.getMonth()===d.getMonth() && dd.getFullYear()===d.getFullYear(); });
+    rows.push([
+      d.toLocaleString('en', { month: 'short', year: 'numeric' }),
+      s.reduce((a, x) => a + x.total, 0),
+      s.reduce((a, x) => a + x.qty, 0),
+      Math.round(s.reduce((a, x) => a + (x.price - x.cost) * x.qty, 0))
+    ]);
+  }
+  doc.autoTable({
+    startY: 24,
+    head: [['Month', 'Revenue (₹)', 'Tyres Sold', 'Profit (₹)']],
+    body: rows, theme: 'grid',
+    headStyles: { fillColor: [22, 199, 154], textColor: 255 },
+    styles: { fontSize: 10 }
+  });
+  doc.save(`monthly-report-${Date.now()}.pdf`);
+}
+
+function exportSalesExcel() {
+  if (!DB.sales.length) return alert('No sales to export');
+  const data = [...DB.sales].reverse().map(s => ({
+    Invoice: s.invoice || '', Date: new Date(s.date).toLocaleDateString('en-IN'),
+    Customer: s.customer || '', Phone: s.phone || '',
+    Tyre: `${s.tyreBrand} ${s.tyreSize}`, Type: s.tyreType,
+    Qty: s.qty, 'Rate (₹)': s.price, 'Total (₹)': s.total,
+    'Profit (₹)': s.returned ? 0 : (s.price - s.cost) * s.qty,
+    Status: s.returned ? 'RETURNED' : 'OK',
+    'Return Date': s.returnDate ? new Date(s.returnDate).toLocaleDateString('en-IN') : '',
+    'Return Note': s.returnNote || '',
+    Notes: s.notes || ''
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Sales');
+  XLSX.writeFile(wb, `sales-${Date.now()}.xlsx`);
+}
+
+function exportStockExcel() {
+  if (!DB.tyres.length) return alert('No stock to export');
+  const data = DB.tyres.map(t => ({
+    Brand: t.brand, Size: t.size, Type: t.type, Qty: t.qty,
+    'Cost (₹)': t.costPrice, 'Sell (₹)': t.sellPrice,
+    'Stock Value (₹)': t.qty * t.costPrice,
+    Condition: t.condition || ''
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Stock');
+  XLSX.writeFile(wb, `stock-${Date.now()}.xlsx`);
+}
+
+function exportMonthlyExcel() {
+  const now = new Date();
+  const active = DB.sales.filter(s => !s.returned);
+  const data = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const s = active.filter(x => { const dd = new Date(x.date); return dd.getMonth()===d.getMonth() && dd.getFullYear()===d.getFullYear(); });
+    data.push({
+      Month: d.toLocaleString('en', { month: 'short', year: 'numeric' }),
+      'Revenue (₹)': s.reduce((a, x) => a + x.total, 0),
+      'Tyres Sold': s.reduce((a, x) => a + x.qty, 0),
+      'Profit (₹)': Math.round(s.reduce((a, x) => a + (x.price - x.cost) * x.qty, 0))
+    });
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Monthly');
+  XLSX.writeFile(wb, `monthly-${Date.now()}.xlsx`);
+}
+
+function exportAllExcel() {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.tyres.map(t => ({
+    Brand: t.brand, Size: t.size, Type: t.type, Qty: t.qty,
+    'Cost (₹)': t.costPrice, 'Sell (₹)': t.sellPrice, Condition: t.condition || ''
+  }))), 'Stock');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.sales.map(s => ({
+    Invoice: s.invoice || '', Date: new Date(s.date).toLocaleDateString('en-IN'),
+    Customer: s.customer || '', Phone: s.phone || '',
+    Tyre: `${s.tyreBrand} ${s.tyreSize}`, Qty: s.qty, 'Rate (₹)': s.price,
+    'Total (₹)': s.total, Status: s.returned ? 'RETURNED' : 'OK',
+    'Return Note': s.returnNote || '', Notes: s.notes || ''
+  }))), 'Sales');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.purchases.map(p => ({
+    Date: new Date(p.date).toLocaleDateString('en-IN'),
+    Seller: p.seller || '', Phone: p.sellerPhone || '',
+    Tyre: `${p.tyreBrand} ${p.tyreSize}`, Qty: p.qty,
+    'Cost (₹)': p.cost, 'Total (₹)': p.total, Notes: p.notes || ''
+  }))), 'Purchases');
+  XLSX.writeFile(wb, `rs-tyres-all-${Date.now()}.xlsx`);
+}
+
+function loadSampleData() {
+  DB.tyres = [
+    { id:'1', type:'new', brand:'MRF', size:'195/65 R15', qty:8, costPrice:3200, sellPrice:4200, condition:'' },
+    { id:'2', type:'new', brand:'CEAT', size:'205/55 R16', qty:5, costPrice:3800, sellPrice:5100, condition:'' },
+    { id:'3', type:'used', brand:'Apollo', size:'185/60 R14', qty:3, costPrice:800, sellPrice:1500, condition:'70% tread' },
+    { id:'4', type:'used', brand:'MRF', size:'175/70 R13', qty:1, costPrice:600, sellPrice:1100, condition:'Good' }
+  ];
+  const customers = [['Ramesh Patil','9876543210'], ['Suresh Jadhav','9876543211'], ['Anil Deshmukh','9876543212'], ['Priya Kulkarni','9876543213']];
+  const now = new Date();
+  DB.sales = [];
+  for (let i = 0; i < 15; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - Math.floor(Math.random()*3), Math.floor(Math.random()*28)+1);
+    const t = DB.tyres[Math.floor(Math.random()*DB.tyres.length)];
+    const c = customers[Math.floor(Math.random()*customers.length)];
+    const q = 1 + Math.floor(Math.random()*2);
+    const ymd = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+    DB.sales.push({
+      id:'s'+i, invoice:`INV-${ymd}-${String(i+1).padStart(3,'0')}`,
+      customer:c[0], phone:c[1], notes:'',
+      tyreId:t.id, tyreBrand:t.brand, tyreSize:t.size, tyreType:t.type,
+      qty:q, price:t.sellPrice, cost:t.costPrice, date:d.toISOString(), total:q*t.sellPrice,
+      returned: false, returnNote: '', returnDate: ''
+    });
+  }
+  DB.purchases = [{
+    id:'p1', seller:'ABC Tyres Pvt Ltd', sellerPhone:'9876500000', notes:'Opening stock',
+    tyreId:'1', tyreBrand:'MRF', tyreSize:'195/65 R15', tyreType:'new',
+    qty:8, cost:3200, date:now.toISOString(), total:8*3200
+  }];
+  DB.biz = { name: 'RS TYRES', addr: DB.biz.addr || '' };
+  DB.save(); applyLang();
+  alert(lang==='en'?'Sample data loaded!':'नमुना डेटा लोड झाला!');
+}
+
+function clearAllData() {
+  if (!confirm(lang==='en'?'Delete ALL data?':'सर्व डेटा हटवायचा?')) return;
+  DB.tyres = []; DB.sales = []; DB.purchases = []; DB.save(); renderAll();
+}
+
+applyLang();
+renderAll();
+</script>
+</body>
+</html>
