@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1a1a2e">
+<title>RS TYRES — Stock Manager</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+:root { --bg:#0f0f1a; --card:#1a1a2e; --accent:#e94560; --green:#16c79a; --text:#eee; --muted:#888; --border:#2a2a40; --orange:#f39c12; }
+body { background:var(--bg); color:var(--text); padding-bottom:70px; min-height:100vh; }
+header { background:var(--card); padding:14px 16px; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10; border-bottom:1px solid var(--border); }
+header h1 { font-size:18px; }
+.lang-btn { background:var(--accent); color:#fff; border:none; padding:6px 12px; border-radius:6px; font-size:13px; cursor:pointer; }
+.screen { display:none; padding:16px; }
+.screen.active { display:block; }
+.card { background:var(--card); border-radius:12px; padding:16px; margin-bottom:12px; border:1px solid var(--border); }
+.stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+.stat { background:var(--card); border-radius:12px; padding:14px; border:1px solid var(--border); }
+.stat .label { font-size:12px; color:var(--muted); margin-bottom:4px; }
+.stat .value { font-size:20px; font-weight:700; }
+.stat .value.green { color:var(--green); }
+.stat .value.red { color:var(--accent); }
+.growth-bar { height:8px; background:var(--border); border-radius:4px; margin-top:8px; overflow:hidden; }
+.growth-bar div { height:100%; background:var(--green); border-radius:4px; transition:width .3s; }
+.btn { padding:10px 16px; border:none; border-radius:8px; font-size:14px; cursor:pointer; font-weight:600; }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-green { background:var(--green); color:#fff; }
+.btn-orange { background:var(--orange); color:#fff; }
+.btn-ghost { background:transparent; color:var(--text); border:1px solid var(--border); }
+.btn-block { width:100%; }
+.btn-row { display:flex; gap:10px; margin-bottom:16px; }
+.btn-row .btn { flex:1; }
+input, select, textarea { width:100%; padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; margin-bottom:10px; font-family:inherit; }
+textarea { resize:vertical; min-height:60px; }
+label { font-size:13px; color:var(--muted); display:block; margin-bottom:4px; }
+.tyre-item { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+.tyre-info .name { font-weight:600; font-size:15px; }
+.tyre-info .meta { font-size:12px; color:var(--muted); margin-top:2px; }
+.tyre-tag { display:inline-block; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:6px; }
+.tag-new { background:rgba(22,199,154,.2); color:var(--green); }
+.tag-used { background:rgba(233,69,96,.2); color:var(--accent); }
+.tag-return { background:rgba(243,156,18,.2); color:var(--orange); }
+.qty { font-size:18px; font-weight:700; color:var(--green); }
+.qty.low { color:var(--accent); }
+.delete-btn { background:none; border:none; color:var(--accent); font-size:18px; cursor:pointer; padding:4px 8px; }
+nav { position:fixed; bottom:0; left:0; right:0; background:var(--card); border-top:1px solid var(--border); display:flex; z-index:10; }
+nav button { flex:1; background:none; border:none; color:var(--muted); padding:10px 4px; font-size:11px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; }
+nav button.active { color:var(--accent); }
+nav button .icon { font-size:18px; }
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:center; justify-content:center; z-index:100; padding:16px; }
+.modal-overlay.active { display:flex; }
+.modal { background:var(--card); border-radius:14px; padding:20px; width:100%; max-width:450px; max-height:85vh; overflow-y:auto; }
+.modal h2 { font-size:17px; margin-bottom:14px; }
+.report-row { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); font-size:14px; }
+.report-row:last-child { border-bottom:none; }
+.empty { text-align:center; color:var(--muted); padding:40px 20px; font-size:14px; }
+h3 { font-size:15px; margin-bottom:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+.sale-item { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:8px; }
+.sale-item.returned { border-color:var(--orange); opacity:.85; }
+.sale-item .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; }
+.sale-item .inv { font-size:11px; color:var(--accent); font-weight:700; letter-spacing:.5px; }
+.sale-item .cust { font-weight:600; font-size:14px; margin-top:2px; }
+.sale-item .date { font-size:11px; color:var(--muted); }
+.sale-item .details { font-size:12px; color:var(--muted); margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); }
+.sale-item .amt { font-size:16px; font-weight:700; color:var(--green); }
+.sale-item.returned .amt { color:var(--orange); text-decoration:line-through; }
+.return-note { margin-top:8px; padding:8px; background:rgba(243,156,18,.1); border-left:3px solid var(--orange); border-radius:4px; font-size:12px; color:var(--orange); }
+.action-row { display:flex; gap:8px; margin-top:8px; }
+.action-row .btn { padding:6px 10px; font-size:12px; flex:1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>RS TYRES</h1>
+  <button class="lang-btn" onclick="toggleLang()" id="lang-btn">मराठी</button>
+</header>
+
+<!-- DASHBOARD -->
+<div class="screen active" id="screen-dashboard">
+  <div class="stat-grid">
+    <div class="stat"><div class="label" data-en="Total Stock" data-mr="एकूण साठा">Total Stock</div><div class="value" id="stat-stock">0</div></div>
+    <div class="stat"><div class="label" data-en="Stock Value" data-mr="साठा मूल्य">Stock Value</div><div class="value green" id="stat-stockval">₹0</div></div>
+    <div class="stat"><div class="label" data-en="This Month Sales" data-mr="या महिन्याची विक्री">This Month Sales</div><div class="value green" id="stat-sales">₹0</div></div>
+    <div class="stat"><div class="label" data-en="This Month Profit" data-mr="या महिन्याचा नफा">This Month Profit</div><div class="value green" id="stat-profit">₹0</div></div>
+  </div>
+  <div class="card">
+    <h3 data-en="Monthly Growth" data-mr="मासिक वाढ">Monthly Growth</h3>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+      <span style="font-size:28px;font-weight:700;" id="stat-growth">0%</span>
+      <span style="font-size:12px;color:var(--muted);" data-en="vs last month" data-mr="मागील महिन्याच्या तुलनेत">vs last month</span>
+    </div>
+    <div class="growth-bar"><div id="growth-fill" style="width:0%"></div></div>
+  </div>
+  <div class="card">
+    <h3 data-en="Quick Actions" data-mr="द्रुत क्रिया">Quick Actions</h3>
+    <div class="btn-row">
+      <button class="btn btn-green" onclick="openSaleModal()" data-en="+ Sale" data-mr="+ विक्री">+ Sale</button>
+      <button class="btn btn-primary" onclick="openPurchaseModal()" data-en="+ Purchase" data-mr="+ खरेदी">+ Purchase</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3 data-en="Export Data" data-mr="डेटा निर्यात">Export Data</h3>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="exportSalesPDF()">📄 Sales PDF</button>
+      <button class="btn btn-ghost" onclick="exportSalesExcel()">📊 Sales Excel</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="exportStockExcel()">📦 Stock Excel</button>
+      <button class="btn btn-ghost" onclick="exportAllExcel()">🗂️ All Data Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- STOCK -->
+<div class="screen" id="screen-stock">
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <input type="text" id="search-box" placeholder="Search brand or size..." oninput="renderStock()" style="margin:0;">
+    <button class="btn btn-primary" onclick="openTyreModal()" style="white-space:nowrap;">+</button>
+  </div>
+  <div id="stock-list"></div>
+</div>
+
+<!-- SALES -->
+<div class="screen" id="screen-sales">
+  <div class="card">
+    <h3 data-en="Sales Records" data-mr="विक्री नोंदी">Sales Records</h3>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="exportSalesPDF()">📄 PDF</button>
+      <button class="btn btn-ghost" onclick="exportSalesExcel()">📊 Excel</button>
+    </div>
+    <input type="text" id="sales-search" placeholder="Search customer / invoice / tyre..." oninput="renderSales()">
+    <div id="sales-list"></div>
+  </div>
+</div>
+
+<!-- REPORTS -->
+<div class="screen" id="screen-reports">
+  <div class="card">
+    <h3 data-en="Last 6 Months" data-mr="शेवटचे ६ महिने">Last 6 Months</h3>
+    <div id="report-list"></div>
+    <div class="btn-row" style="margin-top:12px;">
+      <button class="btn btn-ghost" onclick="exportMonthlyPDF()">📄 Monthly PDF</button>
+      <button class="btn btn-ghost" onclick="exportMonthlyExcel()">📊 Monthly Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div class="screen" id="screen-settings">
+  <div class="card">
+    <h3 data-en="Business Info" data-mr="व्यवसाय माहिती">Business Info</h3>
+    <label data-en="Business Name" data-mr="व्यवसायाचे नाव">Business Name</label>
+    <input id="biz-name" placeholder="RS TYRES" oninput="saveBizInfo()">
+    <label data-en="Address" data-mr="पत्ता">Address</label>
+    <input id="biz-addr" placeholder="City, State" oninput="saveBizInfo()">
+  </div>
+  <div class="card">
+    <h3 data-en="Language" data-mr="भाषा">Language</h3>
+    <button class="btn btn-ghost btn-block" onclick="toggleLang()" id="settings-lang">Switch to मराठी</button>
+  </div>
+  <div class="card">
+    <h3 data-en="Data" data-mr="डेटा">Data</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px;" data-en="Demo mode — saved on this device." data-mr="डेमो मोड — या डिव्हाइसवर साठवले.">Demo mode — saved on this device.</p>
+    <button class="btn btn-primary btn-block" onclick="loadSampleData()" data-en="Load Sample Data" data-mr="नमुना डेटा लोड करा">Load Sample Data</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="clearAllData()" data-en="Clear All Data" data-mr="सर्व डेटा हटवा">Clear All Data</button>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <button class="active" onclick="showScreen('dashboard')"><span class="icon">📊</span><span data-en="Dashboard" data-mr="डॅशबोर्ड">Dashboard</span></button>
+  <button onclick="showScreen('stock')"><span class="icon">🛞</span><span data-en="Stock" data-mr="साठा">Stock</span></button>
+  <button onclick="showScreen('sales')"><span class="icon">🧾</span><span data-en="Sales" data-mr="विक्री">Sales</span></button>
+  <button onclick="showScreen('reports')"><span class="icon">📈</span><span data-en="Reports" data-mr="अहवाल">Reports</span></button>
+  <button onclick="showScreen('settings')"><span class="icon">⚙️</span><span data-en="Settings" data-mr="सेटिंग्ज">Settings</span></button>
+</nav>
+
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+// ============================================================
+// DATA — DEMO (localStorage)
+// ============================================================
+const DB = {
+  tyres: JSON.parse(localStorage.getItem('tyres') || '[]'),
+  sales: JSON.parse(localStorage.getItem('sales') || '[]'),
+  purchases: JSON.parse(localStorage.getItem('purchases') || '[]'),
+  biz: JSON.parse(localStorage.getItem('biz') || '{"name":"RS TYRES","addr":""}'),
+  save() {
+    localStorage.setItem('tyres', JSON.stringify(this.tyres));
+    localStorage.setItem('sales', JSON.stringify(this.sales));
+    localStorage.setItem('purchases', JSON.stringify(this.purchases));
+    localStorage.setItem('biz', JSON.stringify(this.biz));
+  }
+};
+
+function nextInvoiceNo() {
+  const t = new Date();
+  const ymd = t.getFullYear() + String(t.getMonth()+1).padStart(2,'0') + String(t.getDate()).padStart(2,'0');
+  const n = DB.sales.filter(s => s.invoice && s.invoice.startsWith('INV-' + ymd)).length + 1;
+  return `INV-${ymd}-${String(n).padStart(3,'0')}`;
+}
+
+// ============================================================
+// LANGUAGE
+// ============================================================
+let lang = localStorage.getItem('lang') || 'en';
+function toggleLang() { lang = lang === 'en' ? 'mr' : 'en'; localStorage.setItem('lang', lang); applyLang(); }
+function applyLang() {
+  document.querySelectorAll('[data-en]').forEach(el => { el.textContent = el.getAttribute('data-' + lang); });
+  document.getElementById('lang-btn').textContent = lang === 'en' ? 'मराठी' : 'English';
+  document.getElementById('settings-lang').textContent = lang === 'en' ? 'Switch to मराठी' : 'English मध्ये बदला';
+  document.getElementById('search-box').placeholder = lang === 'en' ? 'Search brand or size...' : 'ब्रँड किंवा साइज शोधा...';
+  document.getElementById('sales-search').placeholder = lang === 'en' ? 'Search customer / invoice / tyre...' : 'ग्राहक / बीजक / टायर शोधा...';
+  document.getElementById('biz-name').value = DB.biz.name;
+  document.getElementById('biz-addr').value = DB.biz.addr;
+  renderAll();
+}
+function saveBizInfo() {
+  DB.biz = { name: document.getElementById('biz-name').value, addr: document.getElementById('biz-addr').value };
+  DB.save();
+}
+
+// ============================================================
+// SCREENS & MODALS
+// ============================================================
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  document.querySelectorAll('nav button').forEach((b, i) => {
+    b.classList.toggle('active', ['dashboard','stock','sales','reports','settings'][i] === name);
+  });
+  renderAll();
+}
+function openModal(html) { document.getElementById('modal-content').innerHTML = html; document.getElementById('modal').classList.add('active'); }
+function closeModal() { document.getElementById('modal').classList.remove('active'); }
+
+function openTyreModal() {
+  openModal(`
+    <h2>${lang==='en'?'Add Tyre':'टायर जोडा'}</h2>
+    <label>${lang==='en'?'Type':'प्रकार'}</label>
+    <select id="m-type"><option value="new">${lang==='en'?'New':'नवीन'}</option><option value="used">${lang==='en'?'Used':'वापरलेले'}</option></select>
+    <label>${lang==='en'?'Brand':'ब्रँड'}</label><input id="m-brand" placeholder="MRF / CEAT / Apollo...">
+    <label>${lang==='en'?'Size':'साइज'}</label><input id="m-size" placeholder="195/65 R15">
+    <label>${lang==='en'?'Quantity':'प्रमाण'}</label><input id="m-qty" type="number" value="1" min="1">
+    <label>${lang==='en'?'Cost Price (₹)':'खरेदी किंमत (₹)'}</label><input id="m-cost" type="number" placeholder="0">
+    <label>${lang==='en'?'Selling Price (₹)':'विक्री किंमत (₹)'}</label><input id="m-sell" type="number" placeholder="0">
+    <label>${lang==='en'?'Condition (used only)':'स्थिती (फक्त वापरलेले)'}</label><input id="m-cond" placeholder="Good / 70% tread">
+    <button class="btn btn-primary btn-block" onclick="saveTyre()">${lang==='en'?'Save':'जतन करा'}</button>
+  `);
+}
+function saveTyre() {
+  const t = {
+    id: Date.now().toString(), type: document.getElementById('m-type').value,
+    brand: document.getElementById('m-brand').value.trim(), size: document.getElementById('m-size').value.trim(),
+    qty: parseInt(document.getElementById('m-qty').value) || 1,
+    costPrice: parseFloat(document.getElementById('m-cost').value) || 0,
+    sellPrice: parseFloat(document.getElementById('m-sell').value) || 0,
+    condition: document.getElementById('m-cond').value.trim()
+  };
+  if (!t.brand || !t.size) return alert('Brand and size required');
+  DB.tyres.push(t); DB.save(); closeModal(); renderAll();
+}
+
+function openSaleModal() {
+  const avail = DB.tyres.filter(t => t.qty > 0);
+  if (!avail.length) return alert(lang==='en'?'No stock available':'साठा उपलब्ध नाही');
+  openModal(`
+    <h2>${lang==='en'?'New Sale':'नवीन विक्री'}</h2>
+    <label>${lang==='en'?'Invoice No':'बीजक क्र.'}</label>
+    <input id="s-inv" value="${nextInvoiceNo()}" readonly style="background:var(--border);">
+    <label>${lang==='en'?'Customer Name':'ग्राहकाचे नाव'}</label><input id="s-cust" placeholder="Ramesh Patil">
+    <label>${lang==='en'?'Customer Phone':'ग्राहकाचा फोन'}</label><input id="s-phone" placeholder="9876543210">
+    <label>${lang==='en'?'Tyre':'टायर'}</label>
+    <select id="s-tyre">${avail.map(t=>`<option value="${t.id}">${t.brand} ${t.size} — ${t.qty} in stock</option>`).join('')}</select>
+    <label>${lang==='en'?'Quantity':'प्रमाण'}</label><input id="s-qty" type="number" value="1" min="1">
+    <label>${lang==='en'?'Selling Price per tyre (₹)':'प्रति टायर विक्री किंमत (₹)'}</label><input id="s-price" type="number" placeholder="0">
+    <label>${lang==='en'?'Notes':'टिप्पणी'}</label><input id="s-notes" placeholder="Payment mode / remark">
+    <button class="btn btn-green btn-block" onclick="saveSale()">${lang==='en'?'Record Sale':'विक्री नोंदवा'}</button>
+  `);
+}
+function saveSale() {
+  const tyreId = document.getElementById('s-tyre').value;
+  const tyre = DB.tyres.find(t => t.id === tyreId);
+  const qty = parseInt(document.getElementById('s-qty').value) || 1;
+  const price = parseFloat(document.getElementById('s-price').value) || tyre.sellPrice;
+  const cust = document.getElementById('s-cust').value.trim();
+  const phone = document.getElementById('s-phone').value.trim();
+  const notes = document.getElementById('s-notes').value.trim();
+  const invoice = document.getElementById('s-inv').value;
+  if (!cust) return alert(lang==='en'?'Customer name required':'ग्राहकाचे नाव आवश्यक');
+  if (qty > tyre.qty) return alert('Not enough stock');
+  const sale = {
+    id: Date.now().toString(), invoice, customer: cust, phone, notes,
+    tyreId, tyreBrand: tyre.brand, tyreSize: tyre.size, tyreType: tyre.type,
+    qty, price, cost: tyre.costPrice, date: new Date().toISOString(), total: qty * price,
+    returned: false, returnNote: '', returnDate: ''
+  };
+  tyre.qty -= qty;
+  DB.sales.push(sale); DB.save(); closeModal(); renderAll();
+  if (confirm(lang==='en'?'Sale recorded. Open invoice PDF?':'विक्री नोंदवली. बीजक PDF उघडायचे?')) generateInvoicePDF(sale);
+}
+
+function openPurchaseModal() {
+  if (!DB.tyres.length) return alert(lang==='en'?'Add a tyre first in Stock':'आधी साठ्यात टायर जोडा');
+  openModal(`
+    <h2>${lang==='en'?'New Purchase':'नवीन खरेदी'}</h2>
+    <label>${lang==='en'?'Seller / Supplier':'विक्रेता / पुरवठादार'}</label><input id="p-seller" placeholder="ABC Tyres Pvt Ltd">
+    <label>${lang==='en'?'Seller Phone':'विक्रेत्याचा फोन'}</label><input id="p-sphone" placeholder="9876543210">
+    <label>${lang==='en'?'Tyre':'टायर'}</label>
+    <select id="p-tyre">${DB.tyres.map(t=>`<option value="${t.id}">${t.brand} ${t.size}</option>`).join('')}</select>
+    <label>${lang==='en'?'Quantity':'प्रमाण'}</label><input id="p-qty" type="number" value="1" min="1">
+    <label>${lang==='en'?'Cost per tyre (₹)':'प्रति टायर खरेदी किंमत (₹)'}</label><input id="p-cost" type="number" placeholder="0">
+    <label>${lang==='en'?'Notes':'टिप्पणी'}</label><input id="p-notes" placeholder="Bill no / remark">
+    <button class="btn btn-primary btn-block" onclick="savePurchase()">${lang==='en'?'Record Purchase':'खरेदी नोंदवा'}</button>
+  `);
+}
+function savePurchase() {
+  const tyreId = document.getE
