@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" data-version="2">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#1a1a2e">
-<title>RS TYRES — Stock Manager V2</title>
+<title>RS TYRES — Stock Manager</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -79,7 +78,6 @@ h3 { font-size:15px; margin-bottom:10px; color:var(--muted); text-transform:uppe
   <button class="lang-btn" onclick="toggleLang()" id="lang-btn">मराठी</button>
 </header>
 
-<!-- DASHBOARD -->
 <div class="screen active" id="screen-dashboard">
   <div class="stat-grid">
     <div class="stat"><div class="label" data-en="Total Stock" data-mr="एकूण साठा">Total Stock</div><div class="value" id="stat-stock">0</div></div>
@@ -115,7 +113,6 @@ h3 { font-size:15px; margin-bottom:10px; color:var(--muted); text-transform:uppe
   </div>
 </div>
 
-<!-- STOCK -->
 <div class="screen" id="screen-stock">
   <div style="display:flex;gap:8px;margin-bottom:12px;">
     <input type="text" id="search-box" placeholder="Search brand or size..." oninput="renderStock()" style="margin:0;">
@@ -124,7 +121,6 @@ h3 { font-size:15px; margin-bottom:10px; color:var(--muted); text-transform:uppe
   <div id="stock-list"></div>
 </div>
 
-<!-- SALES -->
 <div class="screen" id="screen-sales">
   <div class="card">
     <h3 data-en="Sales Records" data-mr="विक्री नोंदी">Sales Records</h3>
@@ -137,7 +133,6 @@ h3 { font-size:15px; margin-bottom:10px; color:var(--muted); text-transform:uppe
   </div>
 </div>
 
-<!-- REPORTS -->
 <div class="screen" id="screen-reports">
   <div class="card">
     <h3 data-en="Last 6 Months" data-mr="शेवटचे ६ महिने">Last 6 Months</h3>
@@ -149,7 +144,6 @@ h3 { font-size:15px; margin-bottom:10px; color:var(--muted); text-transform:uppe
   </div>
 </div>
 
-<!-- SETTINGS -->
 <div class="screen" id="screen-settings">
   <div class="card">
     <h3 data-en="Business Info" data-mr="व्यवसाय माहिती">Business Info</h3>
@@ -170,7 +164,6 @@ h3 { font-size:15px; margin-bottom:10px; color:var(--muted); text-transform:uppe
   </div>
 </div>
 
-<!-- NAV -->
 <nav>
   <button class="active" onclick="showScreen('dashboard')"><span class="icon">📊</span><span data-en="Dashboard" data-mr="डॅशबोर्ड">Dashboard</span></button>
   <button onclick="showScreen('stock')"><span class="icon">🛞</span><span data-en="Stock" data-mr="साठा">Stock</span></button>
@@ -208,18 +201,24 @@ function nextInvoiceNo() {
 }
 
 // ============================================================
-// LANGUAGE
+// LANGUAGE & UI
 // ============================================================
 let lang = localStorage.getItem('lang') || 'en';
 function toggleLang() { lang = lang === 'en' ? 'mr' : 'en'; localStorage.setItem('lang', lang); applyLang(); }
 function applyLang() {
   document.querySelectorAll('[data-en]').forEach(el => { el.textContent = el.getAttribute('data-' + lang); });
-  document.getElementById('lang-btn').textContent = lang === 'en' ? 'मराठी' : 'English';
-  document.getElementById('settings-lang').textContent = lang === 'en' ? 'Switch to मराठी' : 'English मध्ये बदला';
-  document.getElementById('search-box').placeholder = lang === 'en' ? 'Search brand or size...' : 'ब्रँड किंवा साइज शोधा...';
-  document.getElementById('sales-search').placeholder = lang === 'en' ? 'Search customer / invoice / tyre...' : 'ग्राहक / बीजक / टायर शोधा...';
-  document.getElementById('biz-name').value = DB.biz.name;
-  document.getElementById('biz-addr').value = DB.biz.addr;
+  const langBtn = document.getElementById('lang-btn');
+  if(langBtn) langBtn.textContent = lang === 'en' ? 'मराठी' : 'English';
+  const setLang = document.getElementById('settings-lang');
+  if(setLang) setLang.textContent = lang === 'en' ? 'Switch to मराठी' : 'English मध्ये बदला';
+  const sBox = document.getElementById('search-box');
+  if(sBox) sBox.placeholder = lang === 'en' ? 'Search brand or size...' : 'ब्रँड किंवा साइज शोधा...';
+  const sSearch = document.getElementById('sales-search');
+  if(sSearch) sSearch.placeholder = lang === 'en' ? 'Search customer / invoice / tyre...' : 'ग्राहक / बीजक / टायर शोधा...';
+  const bName = document.getElementById('biz-name');
+  if(bName) bName.value = DB.biz.name;
+  const bAddr = document.getElementById('biz-addr');
+  if(bAddr) bAddr.value = DB.biz.addr;
   renderAll();
 }
 function saveBizInfo() {
@@ -227,9 +226,6 @@ function saveBizInfo() {
   DB.save();
 }
 
-// ============================================================
-// SCREENS & MODALS
-// ============================================================
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + name).classList.add('active');
@@ -241,6 +237,9 @@ function showScreen(name) {
 function openModal(html) { document.getElementById('modal-content').innerHTML = html; document.getElementById('modal').classList.add('active'); }
 function closeModal() { document.getElementById('modal').classList.remove('active'); }
 
+// ============================================================
+// BUSINESS LOGIC
+// ============================================================
 function openTyreModal() {
   openModal(`
     <h2>${lang==='en'?'Add Tyre':'टायर जोडा'}</h2>
@@ -270,7 +269,7 @@ function saveTyre() {
 
 function openSaleModal() {
   const avail = DB.tyres.filter(t => t.qty > 0);
-  if (!avail.length) return alert(lang==='en'?'No stock available':'साठा उपलब्ध नाही');
+  if (!avail.length) return alert(lang==='en'?'No stock available. Please add a tyre first.':'साठा उपलब्ध नाही. कृपया आधी टायर जोडा.');
   openModal(`
     <h2>${lang==='en'?'New Sale':'नवीन विक्री'}</h2>
     <label>${lang==='en'?'Invoice No':'बीजक क्र.'}</label>
@@ -318,8 +317,4 @@ function openPurchaseModal() {
     <label>${lang==='en'?'Quantity':'प्रमाण'}</label><input id="p-qty" type="number" value="1" min="1">
     <label>${lang==='en'?'Cost per tyre (₹)':'प्रति टायर खरेदी किंमत (₹)'}</label><input id="p-cost" type="number" placeholder="0">
     <label>${lang==='en'?'Notes':'टिप्पणी'}</label><input id="p-notes" placeholder="Bill no / remark">
-    <button class="btn btn-primary btn-block" onclick="savePurchase()">${lang==='en'?'Record Purchase':'खरेदी नोंदवा'}</button>
-  `);
-}
-function savePurchase() {
-  const tyreId = document.getE
+    <button class="btn btn-primary btn-block" onclick="savePurchase()
